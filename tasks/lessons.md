@@ -55,7 +55,34 @@ would have produced confident nonsense about a production deployment that doesn'
 
 ---
 
-## L5 — Verify provider/API facts against current docs, never from memory
+## L5 — "Merge" means feature → `mealie-fork`, never an upstream sync
+
+**Trigger:** the user says "merge".
+
+**Rule:** merge the feature branch into `mealie-fork`. Syncing from upstream is a separate action
+that must be proposed and confirmed on its own — never bundled into a "merge" instruction.
+
+**Why:** asked to "merge and push", the agent also fast-forwarded the mirror to `upstream/mealie-next`
+and based `mealie-fork` on it, quietly pulling in 8 unreleased upstream commits the user had not
+asked for.
+
+---
+
+## L6 — Track upstream *releases*, not the development branch
+
+**Trigger:** deciding what the fork sits on.
+
+**Rule:** the fork should sit on the latest stable upstream release, not `mealie-next`. Before
+proposing any base, check what the release tag actually contains — a feature being worked on may
+exist only on the dev branch.
+
+**Why:** stated preference. Note the current conflict: `v3.22.0` lacks `import_workflow/` and
+`transcription.py`, both of which land in v3.23.0, so the fork is on `mealie-next` until that
+release exists. Revisit when v3.23.0 ships.
+
+---
+
+## L7 — Verify provider/API facts against current docs, never from memory
 
 **Trigger:** any claim about a model's capabilities, pricing, limits, or API surface.
 

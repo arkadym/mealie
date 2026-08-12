@@ -15,7 +15,7 @@ Upstream develops on `mealie-next`; releases are cut from it.
 
 | Branch | Role |
 |---|---|
-| `mealie-next` | **Pristine mirror of `upstream/mealie-next`.** Never commit here — it only ever fast-forwards. |
+| `mealie-next` | **Pristine mirror of upstream.** Never commit here — it only ever fast-forwards. |
 | `mealie-fork` | **Integration branch.** All fork work lands here; this is what gets tagged and built. |
 | `feature/<slug>` | Feature work, branched from `mealie-fork`, merged back into it. |
 
@@ -25,10 +25,27 @@ Keeping `mealie-next` untouched is what makes the rest cheap: `git diff mealie-n
 *exactly* the fork delta at any moment, which is how you review what you carry and how you extract a
 clean branch for an upstream PR.
 
+## What the fork tracks
+
+**Intent: the latest stable upstream release**, not the `mealie-next` development branch. Releases
+are tagged `vX.Y.Z`.
+
+**Current exception (2026-08-13):** the fork sits on `upstream/mealie-next`, because `v3.22.0` does
+not contain `mealie/services/recipe/import_workflow/` (the Import-with-AI page) or
+`mealie/services/openai/transcription.py` (video transcripts). Both land in v3.23.0, and the fork's
+AI work depends on them. **Switch the mirror to the release tag once v3.23.0 ships**, then sync from
+tags rather than from `mealie-next`.
+
+Before changing the base, always check the target actually contains the features the fork builds on:
+
+```
+git cat-file -e v3.23.0:mealie/services/openai/transcription.py && echo present
+```
+
 ## Syncing
 
 ```
-git fetch upstream
+git fetch upstream --tags
 git log --oneline mealie-next..upstream/mealie-next    # what's new
 
 git checkout mealie-next
