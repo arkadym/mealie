@@ -9,18 +9,40 @@
 | `origin` | `https://github.com/arkadym/mealie` | the fork — push here |
 | `upstream` | `https://github.com/mealie-recipes/mealie` | read-only source, merge from here |
 
-Default branch is **`mealie-next`**, not `main`. Upstream develops on `mealie-next`; releases are cut
-from it.
+Upstream develops on `mealie-next`; releases are cut from it.
+
+## Branches
+
+| Branch | Role |
+|---|---|
+| `mealie-next` | **Pristine mirror of `upstream/mealie-next`.** Never commit here — it only ever fast-forwards. |
+| `mealie-fork` | **Integration branch.** All fork work lands here; this is what gets tagged and built. |
+| `feature/<slug>` | Feature work, branched from `mealie-fork`, merged back into it. |
+
+`mealie-fork` is the fork's default branch on GitHub.
+
+Keeping `mealie-next` untouched is what makes the rest cheap: `git diff mealie-next..mealie-fork` is
+*exactly* the fork delta at any moment, which is how you review what you carry and how you extract a
+clean branch for an upstream PR.
 
 ## Syncing
 
 ```
 git fetch upstream
-git log --oneline HEAD..upstream/mealie-next   # what's new
+git log --oneline mealie-next..upstream/mealie-next    # what's new
+
+git checkout mealie-next
+git merge --ff-only upstream/mealie-next               # mirror can only fast-forward
+
+git checkout mealie-fork
+git merge mealie-next                                  # bring upstream into the fork
 ```
 
 Merging is a **manual, user-initiated** step. Per `CLAUDE.md`, the agent never runs `git merge`
 automatically — it fetches, reports divergence, and waits.
+
+If `--ff-only` fails on `mealie-next`, something was committed to the mirror by mistake; move that
+commit to `mealie-fork` and reset the mirror rather than merging.
 
 ### Conflict hotspots
 
@@ -56,9 +78,33 @@ secrets we don't have) and builds via Depot.dev with upstream's hardcoded projec
 `build-package.yml` **is** reusable as-is — it needs only `GITHUB_TOKEN`.
 
 The fork therefore adds `.github/workflows/fork-publish.yml` (new file; upstream workflows are never
-edited) which reuses `build-package.yml` and pushes `linux/amd64` to `ghcr.io/arkadym/mealie` on git
-tags plus manual dispatch. Upstream workflows that auto-trigger — `nightly.yml` fires on every push
-to `mealie-next` — are disabled through the Actions UI per-workflow toggle rather than deleted.
+edited) which reuses `build-package.yml` and pushes `linux/amd64` to `ghcr.io/arkadym/mealie`.
+
+### Releasing
+
+Tags follow `v<upstream-version>-fork.<n>`, e.g. `v3.22.0-fork.1`. Tag on `mealie-fork`:
+
+```
+git tag -a v3.22.0-fork.1 -m "..."
+git push origin v3.22.0-fork.1
+```
+
+A `v*` tag publishes `ghcr.io/arkadym/mealie:<version>` **and** moves `:latest`. A manual
+`workflow_dispatch` publishes only `sha-<short>`, so an ad-hoc build never moves the tag the VPS
+follows.
+
+`build-package.yml` stamps the tag into `mealie/__init__.py`, so the version shown in the app is the
+fork tag.
+
+### Workflows to keep disabled
+
+Upstream workflows auto-trigger on a fork and fail (missing secrets, missing Depot access, or simply
+irrelevant): `nightly.yml`, `docs.yml`, `locale-sync.yml`, `codeql.yml`, `scheduled-checks.yml`,
+`stale.yml`, `release-drafter.yml`, `release.yml`, `auto-merge-*.yml`, `pull-request*.yml`.
+
+Disable them with the **per-workflow toggle in the Actions UI**, never by deleting the files —
+deleting creates a conflict on every upstream merge. `fork-publish.yml` must stay **enabled**, and
+Actions must be enabled for the repository, or tags will publish nothing.
 
 Plan and details: `tasks/fork-ci-and-test-env.md`.
 

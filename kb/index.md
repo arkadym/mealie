@@ -8,7 +8,7 @@ Root index. Every KB page is reachable from here. Add new pages to the tree belo
   - [Repo overview](architecture/overview.md) — layout, stack, command runner, codegen, migrations
   - [AI integration](architecture/ai-integration.md) — providers, roles, request/response flow, known provider incompatibilities
 - **Operations**
-  - [Fork workflow](ops/fork-workflow.md) — remotes, upstream syncing, branches, private files
+  - [Fork workflow](ops/fork-workflow.md) — remotes, branch strategy (`mealie-next` mirror / `mealie-fork` integration), syncing, releases, CI
 - **Decisions**
   - [Index](decisions/index.md)
     - [001 — Multi-provider AI support](decisions/001-multi-provider-ai.md)

@@ -56,6 +56,7 @@ as-is via `workflow_call`. Editing upstream workflow files is avoided entirely (
 | Aspect | Choice |
 |---|---|
 | Trigger | `push: tags: ['v*']` **plus** `workflow_dispatch` with a `tag` input |
+| Branch | tags are cut on `mealie-fork`; `mealie-next` stays a pristine upstream mirror |
 | Platform | `linux/amd64` only — VPS is x86; no QEMU, no arm64 leg |
 | Builder | `docker/setup-buildx-action` + `docker/build-push-action` (replaces Depot) |
 | Registry | `ghcr.io/arkadym/mealie` only — no DockerHub |
