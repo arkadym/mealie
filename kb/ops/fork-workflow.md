@@ -99,11 +99,22 @@ edited) which reuses `build-package.yml` and pushes `linux/amd64` to `ghcr.io/ar
 
 ### Releasing
 
-Tags follow `v<upstream-version>-fork.<n>`, e.g. `v3.22.0-fork.1`. Tag on `mealie-fork`:
+Tag names state which upstream code is actually inside the image:
+
+| Fork base | Tag form | Example |
+|---|---|---|
+| a stable upstream release | `v<release>-fork.<n>` | `v3.23.0-fork.1` |
+| upstream's dev branch | `v<next-release>-dev.fork.<n>` | `v3.23.0-dev.fork.1` |
+
+The `-dev` form matters while the fork sits on `mealie-next`: the tree is dozens of commits past the
+last release, so a tag naming that release would misrepresent the image — and it would mislead
+precisely when deciding months later whether to roll the VPS forward.
+
+Tag on `mealie-fork`:
 
 ```
-git tag -a v3.22.0-fork.1 -m "..."
-git push origin v3.22.0-fork.1
+git tag -a v3.23.0-dev.fork.1 -m "..."
+git push origin v3.23.0-dev.fork.1
 ```
 
 A `v*` tag publishes `ghcr.io/arkadym/mealie:<version>` **and** moves `:latest`. A manual
