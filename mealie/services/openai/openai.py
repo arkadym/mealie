@@ -21,6 +21,8 @@ from mealie.schema.openai._base import OpenAIBase
 from mealie.schema.openai.general import OpenAIText
 
 from .._base_service import BaseService
+from .response_extraction import extract_payload, normalize_payload
+from .structured_output import build_request
 
 T = TypeVar("T", bound=OpenAIBase)
 logger = root_logger.get_logger(__name__)
@@ -265,20 +267,34 @@ class OpenAIService(BaseService):
         self, prompt: str, content: list[dict], response_schema: type[T], provider: AIProviderOut
     ) -> ChatCompletion:
         client = self.get_client(provider)
-        return await client.chat.completions.parse(
-            messages=[
-                {
-                    "role": "system",
-                    "content": prompt,
-                },
-                {
-                    "role": "user",
-                    "content": content,
-                },
-            ],
-            model=provider.model,
-            response_format=response_schema,
+        system_prompt, request_kwargs, use_parse_helper = build_request(
+            provider.structured_output_mode, prompt, response_schema
         )
+
+        if provider.max_tokens:
+            request_kwargs["max_tokens"] = provider.max_tokens
+
+        if provider.request_body:
+            # Options the OpenAI schema doesn't define, e.g. {"thinking": {"type": "disabled"}}
+            request_kwargs["extra_body"] = provider.request_body
+
+        messages: list[dict] = [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": content,
+            },
+        ]
+
+        # `parse` serialises the schema into a strict json_schema request, which only some
+        # providers accept; every other mode expresses the schema differently and uses `create`.
+        if use_parse_helper:
+            return await client.chat.completions.parse(messages=messages, model=provider.model, **request_kwargs)
+
+        return await client.chat.completions.create(messages=messages, model=provider.model, **request_kwargs)
 
     async def get_response(
         self,
@@ -301,10 +317,20 @@ class OpenAIService(BaseService):
             if not response.choices:
                 return None
 
-            response_text = response.choices[0].message.content
+            payload = extract_payload(response.choices[0].message)
+            response_text = normalize_payload(payload) if payload else ""
+            if not response_text:
+                raise exceptions.OpenAIEmptyResponseError(
+                    "The provider returned no usable payload. Checked the message content, "
+                    "tool calls, and function call."
+                )
+
             return response_schema.parse_openai_response(response_text)
         except openai.RateLimitError as e:
             raise exceptions.RateLimitError(str(e)) from e
+        except exceptions.OpenAIServiceError:
+            # Already specific and actionable; wrapping it would hide the cause
+            raise
         except Exception as e:
             raise Exception(f"OpenAI Request Failed. {e.__class__.__name__}: {e}") from e
 

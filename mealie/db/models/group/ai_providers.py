@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING
 
 import sqlalchemy as sa
@@ -12,8 +13,13 @@ if TYPE_CHECKING:
     from .group import Group
 
 
-def unwrap_headers_and_params(func):
-    """Decorator function to unpack headers and params into dicts"""
+def unwrap_request_config(func):
+    """
+    Decorator function to convert request config into its stored representation.
+
+    Headers and params become key-value rows; the body is stored as JSON text, since it may
+    contain nested objects that key-value pairs cannot express.
+    """
 
     def unwrap(value: dict | None) -> list[dict]:
         if value is None:
@@ -24,11 +30,13 @@ def unwrap_headers_and_params(func):
     def wrapper(*args, **kwargs):
         headers = kwargs.pop("request_headers", {})
         params = kwargs.pop("request_params", {})
+        body = kwargs.pop("request_body", None)
 
         return func(
             *args,
             request_headers=unwrap(headers),
             request_params=unwrap(params),
+            request_body=json.dumps(body) if body else None,
             **kwargs,
         )
 
@@ -80,6 +88,18 @@ class AIProvider(SqlAlchemyBase, BaseMixins):
     model: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=False)
     timeout: orm.Mapped[int] = orm.mapped_column(sa.Integer, nullable=False, default=300)
 
+    # How this provider can be asked for structured output. Stored as a string; the valid values
+    # are defined by AIStructuredOutputMode in the schema layer.
+    structured_output_mode: orm.Mapped[str] = orm.mapped_column(
+        sa.String, nullable=False, default="json_schema", server_default="json_schema"
+    )
+    # Null means "send no cap", preserving the original behaviour
+    max_tokens: orm.Mapped[int | None] = orm.mapped_column(sa.Integer, nullable=True)
+
+    # Extra request-body parameters as JSON text, merged into the request. Lets a provider be
+    # given options the OpenAI schema doesn't define, without any vendor-specific code.
+    request_body: orm.Mapped[str | None] = orm.mapped_column(sa.String, nullable=True)
+
     request_headers: orm.Mapped[list[AIProviderHeaders]] = orm.relationship(
         "AIProviderHeaders", cascade="all, delete-orphan"
     )
@@ -87,7 +107,7 @@ class AIProvider(SqlAlchemyBase, BaseMixins):
         "AIProviderParams", cascade="all, delete-orphan"
     )
 
-    @unwrap_headers_and_params
+    @unwrap_request_config
     @auto_init()
     def __init__(self, **_) -> None:
         pass

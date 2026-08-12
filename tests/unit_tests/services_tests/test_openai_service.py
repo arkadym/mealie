@@ -1,9 +1,12 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
 
 import mealie.services.openai.openai as openai_module
+from mealie.core import exceptions
+from mealie.schema.openai.general import OpenAIText
 from mealie.services.openai.openai import OpenAIService
 
 
@@ -82,3 +85,68 @@ def test_get_prompt_raises_when_no_files(settings_stub, monkeypatch):
     with pytest.raises(OSError) as ei:
         svc.get_prompt("recipes.parse-recipe-ingredients")
     assert "Unable to load prompt" in str(ei.value)
+
+
+def _completion(content=None, tool_arguments=None) -> SimpleNamespace:
+    tool_calls = [SimpleNamespace(function=SimpleNamespace(arguments=tool_arguments))] if tool_arguments else None
+    message = SimpleNamespace(content=content, tool_calls=tool_calls, function_call=None)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+def _stub_raw_response(monkeypatch, svc: OpenAIService, completion: SimpleNamespace) -> None:
+    async def _fake_get_raw_response(*args, **kwargs):
+        return completion
+
+    monkeypatch.setattr(svc, "_get_raw_response", _fake_get_raw_response)
+
+
+@pytest.mark.asyncio
+async def test_get_response_reads_message_content(settings_stub, monkeypatch):
+    svc = OpenAIService(_make_mock_repos())
+    _stub_raw_response(monkeypatch, svc, _completion(content='{"text": "hello"}'))
+
+    result = await svc.get_response("prompt", "message", response_schema=OpenAIText, provider=MagicMock())
+    assert result is not None
+    assert result.text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_response_reads_tool_call_payload(settings_stub, monkeypatch):
+    """
+    Regression: a provider (or gateway) without json_schema support answers with a forced tool
+    call, leaving message.content empty. Reading only content discarded a correct response.
+    """
+    svc = OpenAIService(_make_mock_repos())
+    _stub_raw_response(monkeypatch, svc, _completion(content=None, tool_arguments='{"text": "hello"}'))
+
+    result = await svc.get_response("prompt", "message", response_schema=OpenAIText, provider=MagicMock())
+    assert result is not None
+    assert result.text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_response_unwraps_fenced_json(settings_stub, monkeypatch):
+    svc = OpenAIService(_make_mock_repos())
+    _stub_raw_response(monkeypatch, svc, _completion(content='```json\n{"text": "hello"}\n```'))
+
+    result = await svc.get_response("prompt", "message", response_schema=OpenAIText, provider=MagicMock())
+    assert result is not None
+    assert result.text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_get_response_raises_on_empty_payload(settings_stub, monkeypatch):
+    svc = OpenAIService(_make_mock_repos())
+    _stub_raw_response(monkeypatch, svc, _completion(content=None))
+
+    with pytest.raises(exceptions.OpenAIEmptyResponseError):
+        await svc.get_response("prompt", "message", response_schema=OpenAIText, provider=MagicMock())
+
+
+@pytest.mark.asyncio
+async def test_get_response_returns_none_without_choices(settings_stub, monkeypatch):
+    svc = OpenAIService(_make_mock_repos())
+    _stub_raw_response(monkeypatch, svc, SimpleNamespace(choices=[]))
+
+    result = await svc.get_response("prompt", "message", response_schema=OpenAIText, provider=MagicMock())
+    assert result is None

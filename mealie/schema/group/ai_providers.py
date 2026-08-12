@@ -1,3 +1,5 @@
+import json
+from enum import Enum
 from typing import Any, Self
 
 from pydantic import UUID4, ConfigDict, Field, ValidationInfo, computed_field, field_validator, model_validator
@@ -8,6 +10,21 @@ from mealie.db.models.group.ai_providers import AIProvider, AIProviderSettings
 from mealie.schema._mealie import MealieModel
 
 
+class AIStructuredOutputMode(str, Enum):
+    """
+    How a provider can be asked to return structured data.
+
+    Providers differ in what they accept: OpenAI and Azure implement strict json_schema, DeepSeek
+    rejects it, and the Anthropic compatibility layer ignores response_format entirely while
+    supporting tools. `tool_call` is the broadest option for non-OpenAI providers.
+    """
+
+    json_schema = "json_schema"
+    tool_call = "tool_call"
+    json_object = "json_object"
+    text = "text"
+
+
 class AIProviderCreate(MealieModel):
     name: str
     base_url: str | None = None
@@ -15,8 +32,15 @@ class AIProviderCreate(MealieModel):
     model: str
     timeout: int = 300
 
+    structured_output_mode: AIStructuredOutputMode = AIStructuredOutputMode.json_schema
+    max_tokens: int | None = None
+
     request_headers: dict[str, str] = {}
     request_params: dict[str, str] = {}
+
+    # Merged into the request body, for options the OpenAI schema doesn't define. Nested values
+    # are supported, e.g. {"thinking": {"type": "disabled"}}.
+    request_body: dict[str, Any] = {}
 
     @field_validator("name", "api_key", "model")
     def validate_not_empty(val: str, info: ValidationInfo) -> str:
@@ -33,6 +57,39 @@ class AIProviderCreate(MealieModel):
     def validate_non_negative_number(val: int, info: ValidationInfo) -> int:
         if val < 0:
             raise ValueError(f"{info.field_name} cannot be less than zero")
+
+        return val
+
+    @field_validator("max_tokens", mode="before")
+    def validate_max_tokens(val: Any | None) -> Any | None:
+        # An empty value means "don't send a cap", which is the pre-existing behaviour
+        if val in (None, "", 0):
+            return None
+
+        if isinstance(val, int) and val < 0:
+            raise ValueError("max_tokens cannot be less than zero")
+
+        return val
+
+    @field_validator("structured_output_mode", mode="before")
+    def validate_structured_output_mode(val: Any | None) -> Any:
+        return val or AIStructuredOutputMode.json_schema
+
+    @field_validator("request_body", mode="before")
+    def validate_request_body(val: Any | None) -> Any:
+        """Accepts a dict, or the JSON text the column stores."""
+
+        if not val:
+            return {}
+
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except ValueError as e:
+                raise ValueError("request_body must be valid JSON") from e
+
+        if not isinstance(val, dict):
+            raise ValueError("request_body must be a JSON object")
 
         return val
 

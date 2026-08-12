@@ -54,6 +54,15 @@ class OpenAIServiceError(Exception):
     pass
 
 
+class OpenAIEmptyResponseError(OpenAIServiceError):
+    """
+    This exception is raised when a provider returns a response containing no usable payload,
+    in any of the places a payload may appear (message content, tool call, or function call).
+    """
+
+    pass
+
+
 class RateLimitError(Exception):
     """
     This exception is raised when an external API returns a rate limit (429) error.
