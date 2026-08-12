@@ -59,11 +59,16 @@ class TestBuildRequest:
         assert kwargs == {"response_format": _Parent}
         assert prompt == "PROMPT"
 
-    def test_tool_call_mode_forces_the_tool(self):
+    def test_tool_call_mode_offers_one_tool_without_forcing_it(self):
+        """
+        tool_choice is deliberately "auto": DeepSeek's V4 models are always in thinking mode,
+        and thinking mode rejects both "required" and a named function.
+        """
         prompt, kwargs, use_parse = build_request(AIStructuredOutputMode.tool_call, "PROMPT", _Parent)
         assert use_parse is False
         assert prompt == "PROMPT"
-        assert kwargs["tool_choice"] == {"type": "function", "function": {"name": TOOL_NAME}}
+        assert kwargs["tool_choice"] == "auto"
+        assert len(kwargs["tools"]) == 1
 
         function = kwargs["tools"][0]["function"]
         assert function["name"] == TOOL_NAME
