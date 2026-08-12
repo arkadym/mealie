@@ -1,0 +1,118 @@
+# Fork-local image publishing.
+#
+# Upstream's publish.yml cannot run here: it pushes to DockerHub (hkotel/mealie, needing secrets
+# this fork does not have) and builds via Depot.dev using upstream's own project id. This workflow
+# reuses upstream's build-package.yml, which is fork-safe, and pushes to GHCR with plain buildx.
+#
+# Upstream workflow files are never edited, so merges from upstream stay clean.
+
+name: Fork Publish Container
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to stamp into the build (defaults to the short SHA)"
+        required: false
+        type: string
+
+concurrency:
+  group: fork-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      is_release: ${{ steps.resolve.outputs.is_release }}
+    steps:
+      - name: Resolve version and release status
+        id: resolve
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            # v3.22.0-fork.1 -> 3.22.0-fork.1
+            TAG="${GITHUB_REF_NAME#v}"
+            IS_RELEASE=true
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+            IS_RELEASE=false
+          else
+            TAG="sha-${GITHUB_SHA::7}"
+            IS_RELEASE=false
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "is_release=${IS_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "Building ${TAG} (release=${IS_RELEASE})"
+
+  build-package:
+    name: Build Package
+    needs: version
+    uses: ./.github/workflows/build-package.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+
+  publish:
+    name: Publish to GHCR
+    needs: [version, build-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Retrieve Python package
+        uses: actions/download-artifact@v6
+        with:
+          name: backend-dist
+          path: dist
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only a version tag moves :latest. Manual builds publish their own tag alone, so the
+      # tag the VPS follows is never moved by an ad-hoc build.
+      - name: Compute image tags
+        id: tags
+        run: |
+          IMAGE="ghcr.io/${{ github.repository }}"
+          TAGS="${IMAGE}:${{ needs.version.outputs.tag }}"
+          if [ "${{ needs.version.outputs.is_release }}" = "true" ]; then
+            TAGS="${TAGS},${IMAGE}:latest"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "Publishing: ${TAGS}"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          target: production
+          build-contexts: |
+            packages=dist
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            COMMIT=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.version.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
