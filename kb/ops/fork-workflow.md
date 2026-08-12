@@ -6,8 +6,12 @@
 
 | Remote | URL | Purpose |
 |---|---|---|
-| `origin` | `https://github.com/arkadym/mealie` | the fork — push here |
+| `origin` | `git@github-arkadym:arkadym/mealie.git` | the fork — push here |
 | `upstream` | `https://github.com/mealie-recipes/mealie` | read-only source, merge from here |
+
+`origin` uses SSH via the `github-arkadym` host alias in `~/.ssh/config` (key
+`id_ed25519.github-arkadym`). HTTPS pushes fail here — the libsecret credential helper is configured
+but holds no GitHub credential, and there is no TTY to prompt on.
 
 Upstream develops on `mealie-next`; releases are cut from it.
 
