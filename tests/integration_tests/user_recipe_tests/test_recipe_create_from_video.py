@@ -58,7 +58,7 @@ def test_create_recipe_from_video(
 ):
     openai_recipe = _make_openai_recipe()
 
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": None,
@@ -99,7 +99,7 @@ def test_create_recipe_from_video_uses_subtitle_over_transcription(
     subtitle_file = tmp_path / "mealie.en.vtt"
     subtitle_file.write_text(f"WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\n{subtitle_text}\n")
 
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": subtitle_file,
@@ -144,7 +144,7 @@ def test_create_recipe_from_video_download_error(
     monkeypatch: pytest.MonkeyPatch,
     unique_user: TestUser,
 ):
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         raise exceptions.VideoDownloadError("Mock video download error")
 
     monkeypatch.setattr(transcription_module, "download_video", mock_download_video)
@@ -158,7 +158,7 @@ def test_create_recipe_from_video_transcription_error(
     monkeypatch: pytest.MonkeyPatch,
     unique_user: TestUser,
 ):
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": None,
@@ -183,7 +183,7 @@ def test_create_recipe_from_video_empty_openai_response(
     monkeypatch: pytest.MonkeyPatch,
     unique_user: TestUser,
 ):
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": None,

@@ -260,7 +260,7 @@ def test_create_from_video_url(
 ):
     ai = AIResponses(recipe=openai_recipe).install(monkeypatch)
 
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": None,
@@ -304,7 +304,7 @@ def test_create_from_video_url_keeps_accompanying_text(
         messages.append(message)
         return openai_recipe if response_schema is OpenAIRecipe else None
 
-    def mock_download_video(url: str, temp_path: Path):
+    def mock_download_video(url: str, temp_path: Path, *, download_audio: bool = True):
         return {
             "audio": temp_path / "mealie.mp3",
             "subtitle": None,

@@ -12,6 +12,10 @@ class TranscriptionCompiler(SourceCompiler):
     """
     Compiles a video into its transcript. The audio provider does the transcribing, but the
     transcript itself is already a faithful record of the source, so no further AI call is made.
+
+    Subtitles are preferred over transcription and need no audio provider at all, so a video is
+    always worth trying. If it yields nothing, the workflow falls back to reading the URL as a
+    webpage exactly as it would have otherwise.
     """
 
     progress_key = "recipe.create-progress.downloading-video"
@@ -22,17 +26,20 @@ class TranscriptionCompiler(SourceCompiler):
         if not url:
             return False
 
-        settings = self.ctx.ai.provider_settings
-        if not (settings and settings.audio_provider_enabled):
-            return False
-
         return transcription.is_video_url(url)
+
+    @property
+    def _audio_provider_enabled(self) -> bool:
+        settings = self.ctx.ai.provider_settings
+        return bool(settings and settings.audio_provider_enabled)
 
     async def compile(self) -> OpenAICompiledSource | None:
         url = self.ctx.input.url or ""
 
         with get_temporary_path() as temp_path:
-            video_data = await asyncio.to_thread(transcription.download_video, url, temp_path)
+            video_data = await asyncio.to_thread(
+                transcription.download_video, url, temp_path, download_audio=self._audio_provider_enabled
+            )
 
             async def report_transcribing() -> None:
                 await self.ctx.report_progress("recipe.create-progress.transcribing-audio-with-ai")
@@ -42,7 +49,9 @@ class TranscriptionCompiler(SourceCompiler):
             )
 
         if not transcript:
-            self.logger.error("Could not extract a transcript (no data)")
+            # Expected when a video has no subtitles and no audio provider is configured;
+            # the workflow falls back to reading the URL as a webpage.
+            self.logger.info("Could not extract a transcript, falling back to other compilers")
             return None
 
         content_parts = [f"# {video_data['title']}"] if video_data["title"] else []
