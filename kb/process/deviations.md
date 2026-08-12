@@ -38,6 +38,31 @@ Log an entry when any of these happen:
   `CLAUDE.md` has been updated to match.
 - **Follow-up:** none.
 
+### 2026-08-12 — Video transcription fixes folded into the multi-provider branch
+- **Area:** backend
+- **Planned:** `tasks/multi-provider-ai.md` covers structured output only. The transcription gate is
+  a separate bug, found while diagnosing a failed YouTube import.
+- **Actual:** fixed on the same branch at the user's instruction — the `audio_provider_enabled`
+  gate, subtitle language selection, and VTT parsing. The VTT parser fix (header stripping and
+  rolling-caption dedupe) was added on the agent's initiative after the transcript came back 3×
+  larger than necessary; flagged to the user rather than done silently.
+- **Reason:** the gate made video import fail for any user without an audio provider, and the
+  language list made it fail for all Russian/Ukrainian content regardless.
+- **Follow-up:** the design doc does not describe this work; `kb/architecture/ai-integration.md`
+  is the reference. If this is split out for upstream, it is independent of the multi-provider
+  commits.
+
+### 2026-08-12 — Test suite never executed; verification done in-container
+- **Area:** backend / process
+- **Planned:** run `task py:test` and `task py:lint` before reporting work complete.
+- **Actual:** no `uv` and no venv on the machine, and system Python is 3.14 against the project's
+  `>=3.12,<3.13`. Verification instead ran targeted assertions inside the running container
+  (23 extraction + 16 structured-output + 16 transcription + 11 gate checks, all passing) plus one
+  real end-to-end subtitle fetch.
+- **Reason:** toolchain missing; the container has a correct 3.12 environment with all deps.
+- **Follow-up:** install uv, then run the real suite and ruff. In-container checks are not a
+  substitute — they do not exercise fixtures, integration tests, or lint.
+
 ### 2026-08-12 — Adapter layer designed, then reversed before implementation
 - **Area:** backend
 - **Planned:** first draft of `tasks/multi-provider-ai.md` introduced an `AIProviderAdapter` ABC,

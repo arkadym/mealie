@@ -151,17 +151,35 @@ rejects the request otherwise.
 
 ### 4.3 Response extraction
 
-`response_extraction.py` — ordered, provider-agnostic, applied in every mode:
+`response_extraction.py` — ordered, provider-agnostic, applied in every mode.
+
+`extract_payload(message)` locates the payload:
 
 1. `message.content` if non-empty
-2. else `message.tool_calls[0].function.arguments`
+2. else the first `message.tool_calls[*].function.arguments` that is non-empty
 3. else `message.function_call.arguments` (legacy shape)
-4. strip ```` ```json ```` / ```` ``` ```` fences
-5. if still not parseable, extract the first balanced `{...}` / `[...]` span
-6. existing null-byte scrub from `_base.py`
+
+`normalize_payload(text)` then makes it parseable:
+
+4. return as-is if it already parses (the well-behaved case costs one extra `json.loads`)
+5. strip ```` ```json ```` / ```` ``` ```` fences
+6. else extract the first balanced `{...}` / `[...]` span, respecting quoted strings and escapes
+7. if nothing parses, return the fence-stripped text so the error message shows what was sent
 
 Steps 1–3 are correctness, not leniency: once `response_format` is in play the payload
 legitimately lives in different places, and step 2 is what unblocks the LiteLLM path today.
+
+**Implementation note (differs from the original plan):** normalization runs in the service,
+not in `mealie/schema/openai/_base.py`. Importing `services/openai/` from `schema/openai/`
+is a circular import — `services/openai/__init__.py` imports `.openai`, which imports
+`schema.openai._base` — and schema-depends-on-service is the wrong layering regardless.
+`get_response` is the only caller of `parse_openai_response`, so coverage is unchanged.
+`_base.py` keeps its null-byte scrub and is otherwise untouched.
+
+Empty payloads raise `exceptions.OpenAIEmptyResponseError` (a subclass of the existing
+`OpenAIServiceError`), which `get_response` re-raises unwrapped. The old generic
+`"OpenAI Request Failed. ValidationError: ..."` wrapper is exactly what obscured the original
+diagnosis.
 
 DeepSeek reasoner models also return `reasoning_content` alongside `content`; the answer
 stays in `content`, so no special handling — noted so it isn't mistaken for a bug later.
@@ -303,7 +321,8 @@ answer on paper and which determines whether phases 2–3 are worth your time.
 - `mealie/services/openai/openai.py` — mode branching in `_get_raw_response`, extraction in
   `get_response`; public API unchanged
 - `mealie/services/openai/response_extraction.py` — new, pure functions
-- `mealie/schema/openai/_base.py` — parsing hardening
+- `mealie/core/exceptions.py` — `OpenAIEmptyResponseError`
+- `mealie/schema/openai/_base.py` — unchanged (see the implementation note in §4.3)
 - `mealie/schema/group/ai_providers.py` — new fields + role validation
 - `mealie/db/models/group/ai_providers.py` — new columns
 - `mealie/alembic/versions/<new>.py` — new migration

@@ -98,6 +98,39 @@ the `compile-source` step (which transcribes an entire page).
 DeepSeek reasoner models return `reasoning_content` alongside `content`; the answer stays in
 `content`, so this needs no special handling — noted so it is not mistaken for a bug.
 
+## Video imports (fork change)
+
+Video URLs are handled by `TranscriptionCompiler`, which runs before the webpage compiler
+(`CompileSourceStep.run` orders `requires_content = False` compilers first). yt-dlp decides what
+counts as a video via its extractor list, so ordinary recipe sites are unaffected.
+
+**Transcripts come from subtitles first, ASR second** — `resolve_transcription` prefers a known
+transcript, then the subtitle track, and only then transcribes audio. This is the same mechanism
+sites like NoteGPT use, and it needs no audio provider and costs nothing.
+
+Upstream gated the entire compiler on `audio_provider_enabled`, so a video was never even
+attempted without an audio provider — the workflow silently fell back to fetching the URL as a
+webpage, which for YouTube means Google's cookie-consent page and no recipe. This fork removes
+that gate and instead passes `download_audio=False` when no audio provider exists, so only
+subtitles are fetched. If nothing usable comes back, `compile()` returns `None` and the webpage
+path runs exactly as before.
+
+Two related upstream limitations also fixed here:
+
+- `SUBTITLE_LANGS` was a fixed list of five European languages, both for requesting tracks and
+  for finding the downloaded file — so a Russian or Ukrainian video could never be transcribed.
+  `download_video` now probes the video first and `select_subtitle_langs` ranks the available
+  tracks: the video's own language, then the preferred list, then anything else. Only the best
+  single track is downloaded.
+- `parse_subtitle_content` kept VTT metadata (`Kind:`, `Language:`) and every repeated line of
+  rolling captions. On a real short this tripled the transcript: 9467 → 3157 characters after
+  collapsing adjacent duplicates.
+
+**Environment note:** yt-dlp warns that no JS runtime (deno) and no impersonation backend
+(`curl_cffi`) are installed in the Mealie image, and YouTube returned `429 Too Many Requests`
+once during testing before succeeding on retry. Neither is a code defect, but both make YouTube
+extraction less reliable than it could be.
+
 ## Pins
 
 `openai==2.53.0` (`pyproject.toml:42`), checked 2026-08-12.
